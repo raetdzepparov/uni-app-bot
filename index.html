@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Подбор университетов</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --card-bg: #f0f2f5;
+            --accent-color: #2AABEE;
+            --green: #4caf50;
+            --orange: #ff9800;
+            --red: #f44336;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #17212B;
+                --text-color: #ffffff;
+                --card-bg: #232e3c;
+            }
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color); color: var(--text-color);
+            padding: 16px; transition: all 0.3s ease;
+        }
+        h1 { font-size: 22px; margin-bottom: 8px; text-align: center; }
+        .subtitle { font-size: 14px; color: gray; margin-bottom: 20px; text-align: center; }
+        .loader { display: flex; justify-content: center; align-items: center; height: 50vh; font-size: 18px; color: var(--accent-color); }
+
+        .card { background-color: var(--card-bg); border-radius: 12px; padding: 16px; margin-bottom: 16px; cursor: pointer; transition: transform 0.1s; }
+        .card:active { transform: scale(0.98); }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px; }
+        .uni-name { font-size: 18px; font-weight: 600; flex: 1; }
+        .uni-desc { font-size: 14px; line-height: 1.4; opacity: 0.9; margin-bottom: 12px; }
+        .meta-item { font-size: 12px; color: gray; margin-top: 8px; }
+
+        .btn { display: block; width: 100%; text-align: center; margin-top: 12px; padding: 12px; background-color: var(--accent-color); color: #fff !important; text-decoration: none; border-radius: 8px; font-weight: 500; font-size: 14px; border: none; cursor: pointer; }
+        .btn-secondary { background-color: transparent; border: 1px solid var(--accent-color); color: var(--accent-color) !important; }
+        .back-btn { margin-bottom: 20px; }
+        .detail-block { margin-bottom: 20px; }
+        .detail-block h3 { margin-bottom: 8px; font-size: 16px; }
+
+        .program-card { background-color: var(--card-bg); border-radius: 12px; padding: 16px; margin-bottom: 16px; border-left: 4px solid var(--accent-color); }
+        .program-title { font-size: 16px; font-weight: bold; margin-bottom: 8px; }
+        .chance-badges { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+        .chance-badge { font-size: 13px; padding: 6px 10px; border-radius: 8px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        .chance-high { background-color: rgba(76, 175, 80, 0.2); color: var(--green); }
+        .chance-medium { background-color: rgba(255, 152, 0, 0.2); color: var(--orange); }
+        .chance-low { background-color: rgba(244, 67, 54, 0.2); color: var(--red); }
+
+        .review-box { background-color: var(--card-bg); padding: 16px; border-radius: 8px; margin-top: 8px; font-style: italic; display: none; }
+        .loader-small { color: var(--accent-color); font-size: 14px; display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="content">
+        <div class="loader">⏳ ИИ подбирает для вас лучшие вузы...</div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
+        const params = new URLSearchParams(window.location.search);
+        const sessionId = params.get('session_id');
+        const SERVER_URL = "https://darkroom-disparate-passover.ngrok-free.dev"; // Твой ngrok URL
+
+        let sessionData = null;
+
+        async function loadData() {
+            if (!sessionId) {
+                document.getElementById('content').innerHTML = '<p class="subtitle">Ошибка: ID сессии не найден.</p>';
+                return;
+            }
+            try {
+                const response = await fetch(`${SERVER_URL}/api/get-session/${sessionId}`, {
+                    headers: { "ngrok-skip-browser-warning": "true" }
+                });
+                if (!response.ok) throw new Error('Session not found');
+                sessionData = await response.json();
+                renderList();
+            } catch (error) {
+                document.getElementById('content').innerHTML = `<p class="subtitle">⚠️ Не удалось загрузить данные. Попробуйте перезапустить бота.</p>`;
+            }
+        }
+
+        function getChanceClass(chance) {
+            const c = (chance || '').toLowerCase();
+            if (c.includes('высок')) return 'chance-high';
+            if (c.includes('сред')) return 'chance-medium';
+            return 'chance-low';
+        }
+
+        function formatPrice(price) {
+            return price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") + ' ₽/год';
+        }
+
+        // Генерация HTML для шансов поступления по конкретной программе
+        function getChanceBadgesForProgram(program) {
+            const budgetText = `Шанс на поступление (бюджет): ${program.chance_budget || 'Неизвестно'}`;
+            const paidText = `Шанс на поступление (платное): ${program.chance_paid || 'Неизвестно'}`;
+
+            if (sessionData.tuition === 'Только бюджет') {
+                return `<div class="chance-badge ${getChanceClass(program.chance_budget)}"><span>${budgetText}</span></div>`;
+            } else if (sessionData.tuition === 'Платное') {
+                return `<div class="chance-badge ${getChanceClass(program.chance_paid)}"><span>${paidText}</span></div>`;
+            } else {
+                return `
+                    <div class="chance-badge ${getChanceClass(program.chance_budget)}"><span>${budgetText}</span></div>
+                    <div class="chance-badge ${getChanceClass(program.chance_paid)}"><span>${paidText}</span></div>
+                `;
+            }
+        }
+
+        function renderList() {
+            const container = document.getElementById('content');
+            let html = `
+                <h1>🎓 Топ-5 университетов</h1>
+                <p class="subtitle">Направление: ${sessionData.career_broad} | Сумма баллов: ${sessionData.total_score}</p>
+                <p class="subtitle" style="margin-top:-15px; margin-bottom:20px;">Нажмите на вуз, чтобы посмотреть подходящие программы</p>
+            `;
+
+            sessionData.universities.forEach((uni, index) => {
+                html += `
+                    <div class="card" onclick="showDetail(${index})">
+                        <div class="card-header">
+                            <div class="uni-name">${uni.name}</div>
+                        </div>
+                        <div class="uni-desc">${uni.uni_description || 'Описание не предоставлено.'}</div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function showDetail(index) {
+            const uni = sessionData.universities[index];
+            const container = document.getElementById('content');
+
+            // Логика общежития: если пользователь не просил общежитие - не упоминаем его
+            let dormHtml = '';
+            if (sessionData.dorm === true) {
+                dormHtml = `<p>${uni.dormitory_available ? '🏠 Общежитие предоставляется' : '🚫 Общежития нет'}</p>`;
+            }
+
+            let programsHtml = '';
+            uni.programs.forEach((program, progIndex) => {
+                const priceHtml = sessionData.tuition === 'Только бюджет'
+                    ? ''
+                    : `<div class="meta-item" style="text-align: right; margin-top: 8px;">💳 ${formatPrice(program.paid_tuition_price)}</div>`;
+
+                programsHtml += `
+                    <div class="program-card">
+                        <div class="program-title">${program.specialty_name || 'Специальность'}</div>
+                        <div class="uni-desc">${program.specialty_description || 'Описание не предоставлено.'}</div>
+                        ${getChanceBadgesForProgram(program)}
+                        <div class="uni-desc" style="font-size: 13px; opacity: 0.8; margin-top: 8px;">💡 ${program.explanation || ''}</div>
+                        ${priceHtml}
+                    </div>
+                `;
+            });
+
+            container.innerHTML = `
+                <button class="btn btn-secondary back-btn" onclick="renderList()">← Назад к списку</button>
+                <h1>${uni.name}</h1>
+
+                <div class="detail-block">
+                    <h3>📖 Описание вуза</h3>
+                    <div class="uni-desc">${uni.uni_description || 'Описание не предоставлено.'}</div>
+                </div>
+
+                <div class="detail-block">
+                    <h3>💰 Инфраструктура</h3>
+                    <div class="meta-item" style="font-size: 14px; color: var(--text-color);">
+                        ${dormHtml}
+                    </div>
+                </div>
+
+                <div class="detail-block">
+                    <h3>🎯 Подходящие программы (3)</h3>
+                    ${programsHtml}
+                </div>
+
+                <div class="detail-block">
+                    <h3>📝 Отзывы студентов</h3>
+                    <div id="loader-small" class="loader-small">⏳ ИИ читает отзывы...</div>
+                    <div id="review-box" class="review-box"></div>
+                    <button class="btn" onclick="getReviews(${index})">🤖 ИИ: Суммаризовать отзывы</button>
+                </div>
+
+                <a href="${uni.official_website_link}" target="_blank" class="btn" style="background-color: #0088cc;">🌐 Официальный сайт</a>
+            `;
+        }
+
+        async function getReviews(index) {
+            const uni = sessionData.universities[index];
+            const loader = document.getElementById('loader-small');
+            const reviewBox = document.getElementById('review-box');
+            const btn = event.target;
+
+            loader.style.display = 'block';
+            reviewBox.style.display = 'none';
+            btn.style.display = 'none';
+
+            try {
+                // Для отзывов берем название вуза и первую специальность для контекста
+                const specName = uni.programs && uni.programs.length > 0 ? uni.programs[0].specialty_name : 'Не указана';
+                const response = await fetch(`${SERVER_URL}/api/summarize-reviews`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        "ngrok-skip-browser-warning": "true"
+                    },
+                    body: JSON.stringify({ university_name: uni.name, specialty_name: specName })
+                });
+                const data = await response.json();
+                reviewBox.innerText = data.summary;
+                reviewBox.style.display = 'block';
+            } catch (e) {
+                reviewBox.innerText = "Ошибка загрузки отзывов.";
+                reviewBox.style.display = 'block';
+            } finally {
+                loader.style.display = 'none';
+                btn.style.display = 'block';
+            }
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
