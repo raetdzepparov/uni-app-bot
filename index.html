@@ -55,6 +55,18 @@
 
         .review-box { background-color: var(--card-bg); padding: 16px; border-radius: 8px; margin-top: 8px; font-style: italic; display: none; }
         .loader-small { color: var(--accent-color); font-size: 14px; display: none; }
+        .ad-banner {
+            background: linear-gradient(45deg, #ffa726, #ff8a65);
+            color: #ffffff;
+            padding: 12px 16px;
+            border-radius: 12px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+        }
     </style>
 </head>
 <body>
@@ -125,6 +137,10 @@
                 <h1>🎓 Топ-5 университетов</h1>
                 <p class="subtitle">Направление: ${sessionData.career_broad} | Сумма баллов: ${sessionData.total_score}</p>
                 <p class="subtitle" style="margin-top:-15px; margin-bottom:20px;">Нажмите на вуз, чтобы посмотреть подходящие программы</p>
+
+                <div class="ad-banner">
+                    📢 Центральный университет всегда лучший!
+                </div>
             `;
 
             sessionData.universities.forEach((uni, index) => {
